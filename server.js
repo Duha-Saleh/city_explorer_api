@@ -1,9 +1,7 @@
 'use strict';
+//lab8
 
-
-///lab7
-
-//1 first 6
+// //1 first 6
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
@@ -11,37 +9,61 @@ const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000
 
-//(added )1API and 4D.B
+// //(added )1API and 4D.B
 const superagent= require('superagent');
+const pg =require('pg');
+const client = new pg.Client(process.env.DATABASE_URL);
+client.connect();
+client.on('error', err => console.error(err));
 
-// Routs
+
+// // Routs
+
 app.get('/location', handlerOfLocation);
 app.get('/weather', handlerOfWeather);
 app.get('/trails', handlerOfTrails);
 
 
-function handlerOfLocation(req,res){
-        const city = req.query.city;
-    let key = process.env.LOCATIONIQ_KEY;
-    let url = `https://eu1.locationiq.com/v1/search.php?key=${key}&q=${city}&format=json`;
-    
-     superagent.get(url).then(location =>{
-     let newLocation= new Location (city, location.body);
-             res.status(200).json(newLocation);
+//helper Functions
+function  handlerOfLocation (req, res) {
+    let city = req.query.city;
+    let locationKey = process.env.LOCATIONIQ_KEY;
+    let url = `https://eu1.locationiq.com/v1/search.php?key=${locationKey}&q=${city}&format=json`;
+    let selectSQL =`SELECT * FROM locations WHERE search_query='${city}'`
 
-    });   
+    client.query(selectSQL).then(result=>{
+if(result.rowCount){
+    res.send(result);
 }
-function Location(city, location){
-    this.search_query = city;
-    this.formatted_query = location[0].display_name;
-    this.latitude = location[0].lat;
-    this.longitude = location[0].lon;
+else{
+    superagent.get(url)
+    .then(data => {
+        let newLocation = new Location(city, data.body);
+        let queryValues=[newLocation.search_query,newLocation.formatted_query,newLocation.latitude,newLocation.longitude];
+let SQL=`INSERT INTO locations (search_query,formatted_query,latitude,longitude) VALUES ($1,$2,$3,$4)`;
+client.query(SQL,queryValues).then(result => { 
+    res.send(newLocation);
+
+});
+
+    });
+
 };
 
+});
 
-function handlerOfWeather(request, response){
-    const lat = request.query.lat;
-    const lon = request.query.lon;
+};
+
+function Location(city,data){
+this.search_query=city;
+this.formatted_query=data[0].display_name;
+this.latitude=data[0].lat;
+this.longitude=data[0].lon;
+}
+
+function handlerOfWeather(req, res){
+    const lat = req.query.lat;
+    const lon = req.query.lon;
     let key = process.env.WEATHERBIT_KEY;
     let url = `https://api.weatherbit.io/v2.0/forecast/daily?lat=${lat}&lon=${lon}&key=${key}`;
 
@@ -51,7 +73,7 @@ function handlerOfWeather(request, response){
             let newWeather= new Weather(element);
             weatherInfo.push(newWeather);
         })
-        response.json(weatherInfo);
+        res.json(weatherInfo);
 
     })
 
@@ -63,9 +85,9 @@ function Weather(day){
 
 // localhost:3000/trails?lat=333&lon=4343
 
-function handlerOfTrails(request, response){
-    let lat = request.query.lat;
-    let lon = request.query.lon;
+function handlerOfTrails(req, res){
+    let lat = req.query.lat;
+    let lon = req.query.lon;
     let key2 = process.env.TRIAL_API_KEY;
     let url = `https://www.hikingproject.com/data/get-trails?lat=${lat}&lon=${lon}&key=${key2}`;
     
@@ -76,7 +98,7 @@ function handlerOfTrails(request, response){
         trialsInfo.push(newTrial);
     });
 
-        response.status(200).json(trialsInfo);
+        res.status(200).json(trialsInfo);
     });
 }
 function Trails(trails){
@@ -97,6 +119,7 @@ function Trails(trails){
 app.get('*', (req, res) => res.status(404).send('This route does not exist'));
 
 app.listen(PORT, () => console.log(`Listening on port: ${PORT}`));
+
 
 
 
